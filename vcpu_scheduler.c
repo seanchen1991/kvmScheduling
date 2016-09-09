@@ -1,6 +1,12 @@
+#include <dbg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <libvirt/libvirt.h>
+
+struct DomainsList {
+	virDomainPtr *domains;
+	int count;
+};
 
 virConnectPtr local_connect(void)
 {
@@ -13,7 +19,7 @@ virConnectPtr local_connect(void)
 	return conn;
 }
 
-virDomainPtr * domains_list(virConnectPtr conn, unsigned int flags)
+struct DomainsList domains_list(virConnectPtr conn, unsigned int flags)
 {
 	virDomainPtr *domains;
 	int num_domains;
@@ -27,36 +33,47 @@ virDomainPtr * domains_list(virConnectPtr conn, unsigned int flags)
 	for (int i = 0; i < num_domains; i++) {
 	       printf("    - %s\n", virDomainGetName(domains[i]));
 	}
-	return domains;
+	struct DomainsList *list = malloc(sizeof(struct DomainsList));
+        list->count = num_domains;
+        list->domains = domains;
+	return *list;
 }
 
-virDomainPtr active_domains(virConnectPtr conn)
+struct DomainsList active_domains(virConnectPtr conn)
 {
-	virDomainPtr *domains;
 	unsigned int flags = VIR_CONNECT_LIST_DOMAINS_ACTIVE |
 		VIR_CONNECT_LIST_DOMAINS_RUNNING;
 	printf("****ACTIVE****\n");
-	domains = domains_list(conn, flags);
-	return *domains;
+	return domains_list(conn, flags);
 }
 
-virDomainPtr inactive_domains(virConnectPtr conn)
+void vcpus_count(struct DomainsList list)
 {
-	virDomainPtr *domains;
-	unsigned int flags = VIR_CONNECT_LIST_DOMAINS_INACTIVE;
-	printf("****INACTIVE****\n");
-	domains = domains_list(conn, flags);
-	return *domains;
+	for (int i = 0; i < list.count; i++) {
+	        int vcpus;
+		vcpus = virDomainGetVcpusFlags(list.domains[i],
+					       VIR_DOMAIN_VCPU_MAXIMUM);
+		printf("%s - vCPUs -> %d\n",
+		       virDomainGetName(list.domains[i]),
+		       vcpus);
+	}
 }
 
-int main (int argc, char** argv)
+
+int main (int argc, char **argv)
 {
-	printf("- vCPU scheduler - \n");
+	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"
+	      " the scheduler will trigger.");
+	struct DomainsList list;
+	printf("- vCPU scheduler - interval: %s\n", argv[1]);
 	printf("Connecting to Libvirt... \n");
 	virConnectPtr conn = local_connect();
-	active_domains(conn);
-	inactive_domains(conn);
 	printf("Connected! \n");
+	list = active_domains(conn);
+	check(list.count > 0, "No active domains available");
+	vcpus_count(list);
 	virConnectClose(conn);
 	return 0;
+error:
+	return 1;
 }

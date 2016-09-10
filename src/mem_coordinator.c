@@ -43,7 +43,7 @@ char * tagToMeaning(int tag) {
 	return meaning;
 }
 
-void printStats(struct DomainsList list)
+void printDomainStats(struct DomainsList list)
 {
 	printf("------------------------------------------------\n");
 	printf("%d memory stat types supported by this hypervisor\n",
@@ -60,11 +60,36 @@ void printStats(struct DomainsList list)
 				     VIR_DOMAIN_MEMORY_STAT_NR,
 				     0);
 		for(int j = 0; j < VIR_DOMAIN_MEMORY_STAT_NR; j++) {
-			printf("%s - tag -> %s | val -> %lld KB\n",
+			printf("%s : %s = %lld KB\n",
 			       virDomainGetName(list.domains[i]),
 			       tagToMeaning(memstats[j].tag),
 			       memstats[j].val);
 		}
+	}
+}
+
+void printHostStats(virConnectPtr conn)
+{
+	int nparams = 0;
+	virNodeMemoryStatsPtr stats = malloc(sizeof(virNodeMemoryStats));
+	if (virNodeGetMemoryStats(conn,
+				  VIR_NODE_MEMORY_STATS_ALL_CELLS,
+				  NULL,
+				  &nparams,
+				  0) == 0 && nparams != 0) {
+		stats = malloc(sizeof(virNodeMemoryStats) * nparams);
+		memset(stats, 0, sizeof(virNodeMemoryStats) * nparams);
+		virNodeGetMemoryStats(conn,
+				      VIR_NODE_MEMORY_STATS_ALL_CELLS,
+				      stats,
+				      &nparams,
+				      0);
+	}
+	printf("Hypervisor memory: \n");
+	for (int i = 0; i < nparams; i++) {
+		printf("%8s : %lld KB\n",
+		       stats[i].field,
+		       stats[i].value);
 	}
 }
 
@@ -77,9 +102,10 @@ int main (int argc, char **argv)
 	printf("Connecting to Libvirt... \n");
 	virConnectPtr conn = local_connect();
 	printf("Connected! \n");
+	printHostStats(conn);
 	list = active_domains(conn);
 	check(list.count > 0, "No active domains available");
-	printStats(list);
+	printDomainStats(list);
 	virConnectClose(conn);
 	return 0;
 error:

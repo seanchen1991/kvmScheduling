@@ -13,7 +13,6 @@ void vcpus_count(struct DomainsList list)
 	}
 }
 
-
 int main (int argc, char **argv)
 {
 	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"

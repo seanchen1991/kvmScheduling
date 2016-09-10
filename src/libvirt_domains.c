@@ -22,10 +22,9 @@ struct DomainsList domains_list(virConnectPtr conn, unsigned int flags)
 		fprintf(stderr, "Failed to list all domains\n");
 		exit(1);
 	}
-	printf("  There are %d domains\n", num_domains);
-	printf("  Domain IDs:\n");
+	printf("Domain IDs:\n");
 	for (int i = 0; i < num_domains; i++) {
-		printf("    - %s\n", virDomainGetName(domains[i]));
+		printf("  %s\n", virDomainGetName(domains[i]));
 	}
 	struct DomainsList *list = malloc(sizeof(struct DomainsList));
 	list->count = num_domains;

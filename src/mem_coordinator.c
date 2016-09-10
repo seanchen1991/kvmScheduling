@@ -102,10 +102,26 @@ int main (int argc, char **argv)
 	printf("Connecting to Libvirt... \n");
 	virConnectPtr conn = local_connect();
 	printf("Connected! \n");
-	printHostStats(conn);
-	list = active_domains(conn);
-	check(list.count > 0, "No active domains available");
-	printDomainStats(list);
+	// Loop until program halts or no active domains available
+	// Naive implementation, as setting memory in this scenario may
+	// not be optimal due to race conditions.
+	while((list = active_domains(conn)).count > 0)
+	{
+		// look for the highest (available - used) memory out of all domains
+		//   - this looks for memory that's WASTED in the balloon
+		//
+		// look for the lowest (available - used) memory out of all domains
+		//   - this looks for domains that DESPERATELY NEED memory
+		//
+		// deflate the balloon for the highest result and allocate it
+		// for the lowest result
+		//   - use a threshold, e.g:
+		//     only allocate to lowest VM if 100MB away from exhaustion
+		//     otherwise free it so host can have it
+		printHostStats(conn);
+		printDomainStats(list);
+		sleep(10);
+	}
 	virConnectClose(conn);
 	return 0;
 error:

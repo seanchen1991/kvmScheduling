@@ -24,10 +24,10 @@ char * tagToMeaning(int tag) {
 		meaning = "AVAILABLE";
 		break;
 	case 6:
-		meaning = "ACTUAL BALLOON";
+		meaning = "CURRENT BALLOON";
 		break;
 	case 7:
-		meaning = "RSS";
+		meaning = "RSS (Resident Set Size)";
 		break;
 	case 8:
 		meaning = "USABLE";
@@ -43,21 +43,28 @@ char * tagToMeaning(int tag) {
 	return meaning;
 }
 
-
 void printStats(struct DomainsList list)
 {
+	printf("------------------------------------------------\n");
+	printf("%d memory stat types supported by this hypervisor\n",
+	       VIR_DOMAIN_MEMORY_STAT_NR);
+	printf("------------------------------------------------\n");
 	for (int i = 0; i < list.count; i++) {
-		virDomainMemoryStatPtr minfo;
-		minfo = malloc (VIR_DOMAIN_MEMORY_STAT_NR *
-				sizeof (virDomainMemoryStatStruct));
+		virDomainMemoryStatStruct memstats[VIR_DOMAIN_MEMORY_STAT_NR];
+		memset(memstats,
+		       0,
+		       sizeof(virDomainMemoryStatStruct) *
+		       VIR_DOMAIN_MEMORY_STAT_NR);
 		virDomainMemoryStats(list.domains[i],
-				     minfo,
+				     (virDomainMemoryStatPtr)&memstats,
 				     VIR_DOMAIN_MEMORY_STAT_NR,
 				     0);
-		printf("%s - tag -> %s | val -> %lld\n",
-		       virDomainGetName(list.domains[i]),
-		       tagToMeaning(minfo->tag),
-		       minfo->val);
+		for(int j = 0; j < VIR_DOMAIN_MEMORY_STAT_NR; j++) {
+			printf("%s - tag -> %s | val -> %lld KB\n",
+			       virDomainGetName(list.domains[i]),
+			       tagToMeaning(memstats[j].tag),
+			       memstats[j].val);
+		}
 	}
 }
 

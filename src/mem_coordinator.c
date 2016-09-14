@@ -44,6 +44,7 @@ char * tagToMeaning(int tag) {
 	return meaning;
 }
 
+// Used to debug what memory stats do we have available in the domain
 void printDomainStats(struct DomainsList list)
 {
 	printf("------------------------------------------------\n");
@@ -52,11 +53,9 @@ void printDomainStats(struct DomainsList list)
 	printf("------------------------------------------------\n");
 	for (int i = 0; i < list.count; i++) {
 		virDomainMemoryStatStruct memstats[VIR_DOMAIN_MEMORY_STAT_NR];
-                unsigned int nr_stats;
-		unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT |
-			VIR_DOMAIN_AFFECT_CONFIG |
-			VIR_DOMAIN_AFFECT_LIVE;
-                virDomainSetMemoryStatsPeriod(list.domains[i], 1, flags);
+		unsigned int nr_stats;
+		unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT;
+		virDomainSetMemoryStatsPeriod(list.domains[i], 1, flags);
 		nr_stats = virDomainMemoryStats(list.domains[i],
 						memstats,
 						VIR_DOMAIN_MEMORY_STAT_NR,
@@ -67,7 +66,6 @@ void printDomainStats(struct DomainsList list)
 			       tagToMeaning(memstats[j].tag),
 			       memstats[j].val/1024);
 		}
-
 	}
 }
 
@@ -96,23 +94,53 @@ void printHostMemoryStats(virConnectPtr conn)
 	}
 }
 
-long wastedMemory(virDomainPtr domain) {
-
-}
-
-virDomainPtr findWastefulDomain(struct DomainsList list) {
+virDomainPtr * findWastefulDomain(struct DomainsList list) {
+	int mostWastefulDomain;
+	long mostWastedMemory = 0;
+	int mostCriticalDomain;
+	long mostCriticalMemory = 0;
+	virDomainPtr * wastefulAndCritical;
+	wastefulAndCritical = malloc(sizeof(virDomainPtr) * 2);
 	for (int i = 0; i < list.count; i++) {
-		virDomainMemoryStatStruct memstat;
-		memset (&memstat, '\0', sizeof (virDomainMemoryStatStruct));
-		virDomainMemoryStats(list.domains[i],
-				     &memstat,
-				     VIR_DOMAIN_MEMORY_STAT_NR,
-				     0);
-		printf("%s : %s = %lld KB\n",
+		virDomainMemoryStatStruct memstats[VIR_DOMAIN_MEMORY_STAT_NR];
+		unsigned int nr_stats;
+		unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT;
+		unsigned int period_enabled;
+		period_enabled = virDomainSetMemoryStatsPeriod(list.domains[i],
+							       1,
+							       flags);
+		check(period_enabled >= 0,
+		      "ERROR: Could not change balloon collecting period");
+		nr_stats = virDomainMemoryStats(list.domains[i], memstats,
+						VIR_DOMAIN_MEMORY_STAT_NR, 0);
+		check(nr_stats != -1, "ERROR: Could not collect memory stats for domain %s",
+		      virDomainGetName(list.domains[i]));
+		printf("%s : Available = %llu MB\n",
 		       virDomainGetName(list.domains[i]),
-		       tagToMeaning(memstat.tag),
-                       memstat.val);
+		       (memstats[5].val)/1024);
+                if (memstats[5].val > mostWastedMemory) {
+			mostWastefulDomain = i;
+			mostWastedMemory = memstats[5].val;
+		}
+                if (memstats[5].val < mostCriticalMemory ||
+		    mostCriticalMemory == 0) {
+			mostCriticalDomain = i;
+			mostCriticalMemory = memstats[5].val;
+		}
+
 	}
+	printf("%s is the most wasteful domain - mem available %ld MB \n",
+	       virDomainGetName(list.domains[mostWastefulDomain]),
+	       mostWastedMemory/1024);
+	printf("%s is the domain that needs the most memory - mem available %ld MB \n",
+	       virDomainGetName(list.domains[mostCriticalDomain]),
+	       mostCriticalMemory/1024);
+
+	wastefulAndCritical[0] = list.domains[mostWastefulDomain];
+	wastefulAndCritical[1] = list.domains[mostCriticalDomain];
+	return wastefulAndCritical;
+error:
+	exit(1);
 }
 
 int main (int argc, char **argv)
@@ -129,22 +157,20 @@ int main (int argc, char **argv)
 	// not be optimal due to race conditions.
 	while((list = active_domains(conn)).count > 0)
 	{
-		// look for the highest (available - used) memory out of all domains
-		//   - this looks for memory that's WASTED in the balloon
-		//
-		// look for the lowest (available - used) memory out of all domains
-		//   - this looks for domains that DESPERATELY NEED memory
-		//
+		// This should return an array with the most wasteful and
+		// the domain that needs the most memory;
+		findWastefulDomain(list);
 		// deflate the balloon for the highest result and allocate it
 		// for the lowest result
 		//   - use a threshold, e.g:
 		//     only allocate to lowest VM if 100MB away from exhaustion
 		//     otherwise free it so host can have it
-		printHostMemoryStats(conn);
-		//findWastefulDomain(list)
-		printDomainStats(list);
+		//
+	        //printDomainStats(list);
+	        printHostMemoryStats(conn);
 		sleep(atoi(argv[1]));
 	}
+	printf("No active domains - closing. See you next time! \n");
 	virConnectClose(conn);
 	return 0;
 error:

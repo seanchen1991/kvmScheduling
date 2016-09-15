@@ -136,6 +136,7 @@ virDomainPtr * findWastefulDomain(struct DomainsList list) {
 	       virDomainGetName(list.domains[mostCriticalDomain]),
 	       mostCriticalMemory/1024);
 
+
 	wastefulAndCritical[0] = list.domains[mostWastefulDomain];
 	wastefulAndCritical[1] = list.domains[mostCriticalDomain];
 	return wastefulAndCritical;
@@ -160,18 +161,34 @@ int main (int argc, char **argv)
 		// This should return an array with the most wasteful and
 		// the domain that needs the most memory;
 		findWastefulDomain(list);
-		// deflate the balloon for the highest result and allocate it
-		// for the lowest result
-		//   - use a threshold, e.g:
-		//     only allocate to lowest VM if 100MB away from exhaustion
+                // if 'critical < 100MB' {
+		//   At this point, we must assign more memory to the domain
+		//
+		//   if (waste > 50MB) {
+		//     The most wasteful domain will get less memory, precisely
+		//     'waste/2', and the most starved domain will get the same
+		//      quantity.
+		//   } else {
+		//     There is not a lot of waste (< 50MB) and a domain is
+		//     critical (< 100MB). Assign memory from the hypervisor in
+		//     100MB chunks.
+		//     (if the hypervisor does not have that much free memory,
+		//     show an error saying it's causing the hypervisor to swap)
+		//   }
+		// } else if (critical > 100MB && waste > 50MB)
+		//   free(waste);  so host can get back that memory,
+		//   no one 'really needs it'
+		// }
 		//     otherwise free it so host can have it
 		//
+		// Uncomment this to see all guests stats (helpful when debugging)
 	        //printDomainStats(list);
 	        printHostMemoryStats(conn);
 		sleep(atoi(argv[1]));
 	}
 	printf("No active domains - closing. See you next time! \n");
 	virConnectClose(conn);
+        free(conn);
 	return 0;
 error:
 	return 1;

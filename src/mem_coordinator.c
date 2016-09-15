@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <unistd.h>
 
+struct DomainMemory {
+	virDomainPtr domain;
+	long memory;
+};
+
 char * tagToMeaning(int tag) {
 	char * meaning;
 	switch(tag)
@@ -94,13 +99,16 @@ void printHostMemoryStats(virConnectPtr conn)
 	}
 }
 
-virDomainPtr * findWastefulDomain(struct DomainsList list) {
-	int mostWastefulDomain;
-	long mostWastedMemory = 0;
-	int mostCriticalDomain;
-	long mostCriticalMemory = 0;
-	virDomainPtr * wastefulAndCritical;
-	wastefulAndCritical = malloc(sizeof(virDomainPtr) * 2);
+// Returns an array like:
+//  0: Contains the DomainMemory struct that wastes the most memory
+//  1: Contains the DomainMemory struct that needs memory the most urgently
+struct DomainMemory * findRelevantDomains(struct DomainsList list) {
+	struct DomainMemory * ret;
+	struct DomainMemory wasteful;
+	struct DomainMemory starved;
+	ret = malloc(sizeof(struct DomainMemory) * 2);
+	wasteful.memory = 0;
+	starved.memory = 0;
 	for (int i = 0; i < list.count; i++) {
 		virDomainMemoryStatStruct memstats[VIR_DOMAIN_MEMORY_STAT_NR];
 		unsigned int nr_stats;
@@ -113,33 +121,33 @@ virDomainPtr * findWastefulDomain(struct DomainsList list) {
 		      "ERROR: Could not change balloon collecting period");
 		nr_stats = virDomainMemoryStats(list.domains[i], memstats,
 						VIR_DOMAIN_MEMORY_STAT_NR, 0);
-		check(nr_stats != -1, "ERROR: Could not collect memory stats for domain %s",
+		check(nr_stats != -1,
+		      "ERROR: Could not collect memory stats for domain %s",
 		      virDomainGetName(list.domains[i]));
-		printf("%s : Available = %llu MB\n",
+		printf("%s : %llu MB available \n",
 		       virDomainGetName(list.domains[i]),
 		       (memstats[5].val)/1024);
-                if (memstats[5].val > mostWastedMemory) {
-			mostWastefulDomain = i;
-			mostWastedMemory = memstats[5].val;
+		if (memstats[5].val > wasteful.memory) {
+			wasteful.domain = list.domains[i];
+			wasteful.memory = memstats[5].val;
 		}
-                if (memstats[5].val < mostCriticalMemory ||
-		    mostCriticalMemory == 0) {
-			mostCriticalDomain = i;
-			mostCriticalMemory = memstats[5].val;
+		if (memstats[5].val < starved.memory ||
+		    starved.memory == 0) {
+			starved.domain = list.domains[i];
+			starved.memory = memstats[5].val;
 		}
 
 	}
-	printf("%s is the most wasteful domain - mem available %ld MB \n",
-	       virDomainGetName(list.domains[mostWastefulDomain]),
-	       mostWastedMemory/1024);
-	printf("%s is the domain that needs the most memory - mem available %ld MB \n",
-	       virDomainGetName(list.domains[mostCriticalDomain]),
-	       mostCriticalMemory/1024);
+	printf("%s is the most wasteful domain - %ld MB available\n",
+	       virDomainGetName(wasteful.domain),
+	       wasteful.memory/1024);
+	printf("%s is the domain that needs the most memory - %ld MB available\n",
+	       virDomainGetName(starved.domain),
+	       starved.memory/1024);
 
-
-	wastefulAndCritical[0] = list.domains[mostWastefulDomain];
-	wastefulAndCritical[1] = list.domains[mostCriticalDomain];
-	return wastefulAndCritical;
+	ret[0] = wasteful;
+	ret[1] = starved;
+	return ret;
 error:
 	exit(1);
 }
@@ -158,37 +166,47 @@ int main (int argc, char **argv)
 	// not be optimal due to race conditions.
 	while((list = active_domains(conn)).count > 0)
 	{
-		// This should return an array with the most wasteful and
-		// the domain that needs the most memory;
-		findWastefulDomain(list);
-                // if 'critical < 100MB' {
-		//   At this point, we must assign more memory to the domain
-		//
-		//   if (waste > 50MB) {
-		//     The most wasteful domain will get less memory, precisely
-		//     'waste/2', and the most starved domain will get the same
-		//      quantity.
-		//   } else {
-		//     There is not a lot of waste (< 50MB) and a domain is
-		//     critical (< 100MB). Assign memory from the hypervisor in
-		//     100MB chunks.
-		//     (if the hypervisor does not have that much free memory,
-		//     show an error saying it's causing the hypervisor to swap)
-		//   }
-		// } else if (critical > 100MB && waste > 50MB)
-		//   free(waste);  so host can get back that memory,
-		//   no one 'really needs it'
-		// }
-		//     otherwise free it so host can have it
-		//
+		struct DomainMemory * relevantDomains;
+		relevantDomains = findRelevantDomains(list);
+		struct DomainMemory wasteful = relevantDomains[0];
+		struct DomainMemory starved = relevantDomains[1];
+		free(relevantDomains);
+		if (starved.memory/1024 < 100) {
+		// At this point, we must assign more memory to the domain
+			if (wasteful.memory/1024 > 100) {
+				// The most wasteful domain will get less memory, precisely
+				// 'waste/2', and the most starved domain will get
+				// removed the same quantity.
+				virDomainSetMemory(wasteful.domain,
+						   wasteful.memory - wasteful.memory/2);
+				virDomainSetMemory(starved.domain,
+						   starved.memory + wasteful.memory/2);
+			} else {
+				// There is not any waste (< 100MB) and a domain is
+				// critical (< 100MB). Assign memory from the hypervisor in
+				// until the starved host has 100MB available.
+				// TODO:
+				// Check if the hypervisor has that much free memory,
+				// Show an error if it's causing the hypervisor to swap
+				printf("Host is very starved %ld \n", starved.memory/1024);
+
+				virDomainSetMemory(starved.domain,
+						   100*1024 - starved.memory * 2);
+			}
+		} else if (starved.memory/1024 > 100 && wasteful.memory > 100) {
+			// No domain really need more memory at this point, give
+			// it back to the hypervisor
+			virDomainSetMemory(wasteful.domain, wasteful.memory - 100);
+			virDomainSetMemory(starved.domain, starved.memory - 100);
+		}
 		// Uncomment this to see all guests stats (helpful when debugging)
-	        //printDomainStats(list);
-	        printHostMemoryStats(conn);
+		//printDomainStats(list);
+		printHostMemoryStats(conn);
 		sleep(atoi(argv[1]));
 	}
 	printf("No active domains - closing. See you next time! \n");
 	virConnectClose(conn);
-        free(conn);
+	free(conn);
 	return 0;
 error:
 	return 1;

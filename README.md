@@ -2,33 +2,41 @@
 
 VCPU scheduler &amp; memory coordinator for KVM through Libvirt
 
-This is just a experiment to test the libvirt APIs and apply scheduling
-algorithms to vCPUs manually.
+This is just a experiment to play with the libvirt APIs.
 
-A virtual CPU equates to 1 physical core, but when your VM attempts to process something, it can potentially run on any of the cores that happen to be available at that moment. The scheduler handles this, and the VM is not aware of it. You can assign multiple vCPUs to a VM which allows it to run concurrently across several cores.
+It consists of two projects:
 
-Cores are shared between all VMs as needed, so you could have a 4-core system, and 10 VMs running on it with 2 vCPUs assigned to each. VMs share all the cores in your system quite efficiently as determined by the scheduler. This is one of the main benefits of virtualization - making the most use of under-subscribed resources to power multiple OS instances.
->>>>>>> Connect to local Libvirt
+  * A vCPU scheduler which tries to assign the best pCPU to each
+  vCPU, based on fairness
+  * A memory scheduler based on fairness which keeps the unused memory
+  on all active domain within certain boundaries (e.g between 100/300MB)
 
-Launch up to 4 VMs, each with 4 vCPU. Or, 4 VMs for memory part.
-Run a simple program in user space. (This is a different one than the program that you will submit.)
-The program could be either CPU-intensive or memory-intensive. Use 'stress' to generate workload
-  e.g.) ./workload_example
-Run your program with an argument, the time interval(in seconds) the scheduler will trigger.
-  e.g.) ./your_scheduler  12
-Check the resource usage. The usage numbers across VMs should be balanced.
-We don’t expect the perfectly balanced numbers, but definitely you need
-to make sure that work is not overloaded in some VMs only.
-For vCPU scheduler, one option to check the usage is doing “virt-top” from the hypervisor.
+## Memory scheduler
 
+* Compile by running `make`. It will link using -lvirt.
+* The scheduler runs on a period determined by the argument passed (in seconds)
+* `./mem_coordinator 3` would run the scheduler every 3 seconds
+* You need to have active libvirt domains in order to run the scheduler,
+  otherwise the scheduler will simply close on the first cycle without
+  active domains.
+* Run
 
-## Memory coordinator algorithm
+The algorithm used to calculate fairness is the following:
 
-On an 'arg1' period:
+* Define a thresholds for starvation and waste of available memory. By default,
+  a domain is starved when it has less than 150MB of memory available,
+  and it's wasting memory when it has more than 300MB of memory available.
 
-1. Calculate the free memory for every domain by substracting 'available' - 'used'.
-  - Store the domain with the most free memory (it's wasting that memory in the balloon)
-  - Store the domain with the least free memory (it might need more memory)
-1. Free enough memory from the domain that wastes memory until 'free mem' =< 100MB
-1. Assign enough memory to the domain that needs more memory until 'free mem' >= 100MB
-1. Rinse and repeat
+* On every scheduler period, find the most starved and the most wasteful domains.
+
+* If the most starved domain is below the starvation threshold, we have to assign memory to it:
+  * If there is a memory wasting memory above the waste threshold, halve
+  that domain's memory and assign the same amount to the starved domain.
+  * If there is no domain wasting memory (most common case after a few cycles),
+  assign more memory to it (it assigns the current memory + the waste threshold).
+  The algorithm needs to be generous in this step, as memory intensive processes
+  will immediately consume the memory that's assigned in this step.
+* Alternatively, if there is no starved but there is a wasteful domain,
+  return that memory back to the host by getting
+  'wasteful.memory - WASTE_THRESHOLD'
+* The last case, if there is no starved domain nor wasteful domains don't do anything.

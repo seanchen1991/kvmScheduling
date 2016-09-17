@@ -195,22 +195,16 @@ int main (int argc, char **argv)
 				// You need to be generous assigning memory,
 				// otherwise it's consumed immediately (in
 				// between coordinator periods)
-				//
-				// TODO:
-				// Check if the hypervisor has that much free memory,
-				// Show a warning if it's causing the hypervisor to swap
 				virDomainSetMemory(starved.domain,
-						   WASTE_THRESHOLD);
+						   starved.memory + WASTE_THRESHOLD);
 			}
 		} else if (starved.memory/1024 >= STARVATION_THRESHOLD &&
-			   wasteful.memory/1024 <= WASTE_THRESHOLD) {
+			   wasteful.memory/1024 >= WASTE_THRESHOLD) {
 			// No domain really need more memory at this point, give
 			// it back to the hypervisor
 			printf("Returning memory back to host\n");
 			virDomainSetMemory(wasteful.domain,
 					   wasteful.memory - WASTE_THRESHOLD);
-			virDomainSetMemory(starved.domain,
-					   starved.memory - STARVATION_THRESHOLD);
 			printf("DONE\n");
 		}
 		sleep(atoi(argv[1]));

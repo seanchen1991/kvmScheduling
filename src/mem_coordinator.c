@@ -2,6 +2,14 @@
 #include <stdio.h>
 #include <unistd.h>
 
+// Define an available memory threshold below which a domain can be considered
+// memory starved (in MB)
+const int STARVATION_THRESHOLD = 150 * 1024;
+
+// Define an available memory threshold above which a domain can be
+// considered to be wasting memory (in MB)
+const int WASTE_THRESHOLD = 300 * 1024;
+
 struct DomainMemory {
 	virDomainPtr domain;
 	long memory;
@@ -11,37 +19,31 @@ char * tagToMeaning(int tag) {
 	char * meaning;
 	switch(tag)
 	{
-	case 0:
+	case VIR_DOMAIN_MEMORY_STAT_SWAP_IN:
 		meaning = "SWAP IN";
 		break;
-	case 1:
+	case VIR_DOMAIN_MEMORY_STAT_SWAP_OUT:
 		meaning = "SWAP OUT";
 		break;
-	case 2:
+	case VIR_DOMAIN_MEMORY_STAT_MAJOR_FAULT:
 		meaning = "MAJOR FAULT";
 		break;
-	case 3:
+	case VIR_DOMAIN_MEMORY_STAT_MINOR_FAULT:
 		meaning = "MINOR FAULT";
 		break;
-	case 4:
+	case VIR_DOMAIN_MEMORY_STAT_UNUSED:
 		meaning = "UNUSED";
 		break;
-	case 5:
+	case VIR_DOMAIN_MEMORY_STAT_AVAILABLE:
 		meaning = "AVAILABLE";
 		break;
-	case 6:
+	case VIR_DOMAIN_MEMORY_STAT_ACTUAL_BALLOON:
 		meaning = "CURRENT BALLOON";
 		break;
-	case 7:
+	case VIR_DOMAIN_MEMORY_STAT_RSS:
 		meaning = "RSS (Resident Set Size)";
 		break;
-	case 8:
-		meaning = "USABLE";
-		break;
-	case 9:
-		meaning = "LAST UPDATE";
-		break;
-	case 10:
+	case VIR_DOMAIN_MEMORY_STAT_NR:
 		meaning = "NR";
 		break;
 	}
@@ -126,17 +128,16 @@ struct DomainMemory * findRelevantDomains(struct DomainsList list) {
 		      virDomainGetName(list.domains[i]));
 		printf("%s : %llu MB available \n",
 		       virDomainGetName(list.domains[i]),
-		       (memstats[5].val)/1024);
-		if (memstats[5].val > wasteful.memory) {
+		       (memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val)/1024);
+		if (memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val > wasteful.memory) {
 			wasteful.domain = list.domains[i];
-			wasteful.memory = memstats[5].val;
+			wasteful.memory = memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val;
 		}
-		if (memstats[5].val < starved.memory ||
+		if (memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val < starved.memory ||
 		    starved.memory == 0) {
 			starved.domain = list.domains[i];
-			starved.memory = memstats[5].val;
+			starved.memory = memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val;
 		}
-
 	}
 	printf("%s is the most wasteful domain - %ld MB available\n",
 	       virDomainGetName(wasteful.domain),
@@ -171,9 +172,13 @@ int main (int argc, char **argv)
 		struct DomainMemory wasteful = relevantDomains[0];
 		struct DomainMemory starved = relevantDomains[1];
 		free(relevantDomains);
-		if (starved.memory/1024 < 100) {
+                // Uncomment this to see all guests stats (helpful when debugging)
+		// printDomainStats(list);
+		// Uncomment this to see host stats
+		// printHostMemoryStats(conn);
+		if (starved.memory/1024 <= STARVATION_THRESHOLD) {
 		// At this point, we must assign more memory to the domain
-			if (wasteful.memory/1024 > 100) {
+			if (wasteful.memory/1024 >= WASTE_THRESHOLD) {
 				// The most wasteful domain will get less memory, precisely
 				// 'waste/2', and the most starved domain will get
 				// removed the same quantity.
@@ -182,27 +187,34 @@ int main (int argc, char **argv)
 				virDomainSetMemory(starved.domain,
 						   starved.memory + wasteful.memory/2);
 			} else {
-				// There is not any waste (< 100MB) and a domain is
-				// critical (< 100MB). Assign memory from the hypervisor in
-				// until the starved host has 100MB available.
+				// There is not any waste (< WASTE_THRESHOLD) and a domain is
+				// critical (< STARVATION_THRESHOLD).
+				// Assign memory from the hypervisor until the starved host
+				// has STARVATION_THRESHOLD available.
+				//
+				// You need to be generous assigning memory,
+				// otherwise it's consumed immediately (in
+				// between coordinator periods)
+				//
 				// TODO:
 				// Check if the hypervisor has that much free memory,
-				// Show an error if it's causing the hypervisor to swap
-				printf("Host is very starved %ld \n", starved.memory/1024);
-
+				// Show a warning if it's causing the hypervisor to swap
 				virDomainSetMemory(starved.domain,
-						   100*1024 - starved.memory * 2);
+						   WASTE_THRESHOLD);
 			}
-		} else if (starved.memory/1024 > 100 && wasteful.memory > 100) {
+		} else if (starved.memory/1024 >= STARVATION_THRESHOLD &&
+			   wasteful.memory/1024 <= WASTE_THRESHOLD) {
 			// No domain really need more memory at this point, give
 			// it back to the hypervisor
-			virDomainSetMemory(wasteful.domain, wasteful.memory - 100);
-			virDomainSetMemory(starved.domain, starved.memory - 100);
+			printf("Returning memory back to host\n");
+			virDomainSetMemory(wasteful.domain,
+					   wasteful.memory - WASTE_THRESHOLD);
+			virDomainSetMemory(starved.domain,
+					   starved.memory - STARVATION_THRESHOLD);
+			printf("DONE\n");
 		}
-		// Uncomment this to see all guests stats (helpful when debugging)
-		//printDomainStats(list);
-		printHostMemoryStats(conn);
 		sleep(atoi(argv[1]));
+		clearScreen();
 	}
 	printf("No active domains - closing. See you next time! \n");
 	virConnectClose(conn);

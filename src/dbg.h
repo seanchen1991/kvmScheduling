@@ -27,5 +27,23 @@
 
 #define check(A, M, ...) if(!(A)) {\
     log_err(M, ##__VA_ARGS__); errno=0; goto error; }
-
 #endif
+
+#ifdef __cplusplus__
+#include <iostream>
+#include <string>
+
+void clearScreen()
+{
+	cout << string( 100, '\n' );
+}
+
+#else
+void clearScreen()
+{
+	int n;
+	for (n = 0; n < 10; n++)
+		printf( "\n\n\n\n\n\n\n\n\n\n" );
+}
+#endif
+// Pathetic, but I don't want to add more dependencies

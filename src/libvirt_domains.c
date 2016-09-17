@@ -18,10 +18,6 @@ struct DomainsList domains_list(virConnectPtr conn, unsigned int flags)
 	int num_domains;
 	num_domains = virConnectListAllDomains(conn, &domains, flags);
 	check(num_domains > 0, "Failed to list all domains\n");
-	printf("Domain IDs:\n");
-	for (int i = 0; i < num_domains; i++) {
-		printf("  %s\n", virDomainGetName(domains[i]));
-	}
 	struct DomainsList *list = malloc(sizeof(struct DomainsList));
 	list->count = num_domains;
 	list->domains = domains;
@@ -34,8 +30,5 @@ struct DomainsList active_domains(virConnectPtr conn)
 {
 	unsigned int flags = VIR_CONNECT_LIST_DOMAINS_ACTIVE |
 		VIR_CONNECT_LIST_DOMAINS_RUNNING;
-	printf("------------------------------------------------\n");
-	printf("****ACTIVE****\n");
-	printf("------------------------------------------------\n");
 	return domains_list(conn, flags);
 }

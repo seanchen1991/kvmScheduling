@@ -40,3 +40,24 @@ The algorithm used to calculate fairness is the following:
   return that memory back to the host by getting
   'wasteful.memory - WASTE_THRESHOLD'
 * The last case, if there is no starved domain nor wasteful domains don't do anything.
+
+## vCPU scheduler
+
+In general, vCPUs in libvirt are mapped to all physical CPUs in the hypervisor
+by default. Our scheduler decides to pin vCPUs to pCPUs so that pCPU usage
+is balanced, while making as few 'pin changes' as possible as these are costly.
+
+* On every scheduler period:
+* Find:
+  - vCPU usage (%) for all domains
+  - pCPU usage (%)
+* Check the current mapping to see which pCPUs are mapped to which vCPUs.
+* Find 'the best pCPU' to pin each vCPU:
+  - vCPU usage has to be balanced across all 4 pCPUs - sum and divide this usage?
+  - in order to minimize pin changes use this metric:
+     - summation of all vCPU usage
+     - summation of all pCPU usage
+     - division of vcputotal/pcpus.count = average vCPU load per pCPU
+     - keep the same metric within scheduler periods.
+     - if the change isn't dramatic enough, do not reassign vCPUs to pCPUs
+     - define dramatic via threshold (can be tweaked)

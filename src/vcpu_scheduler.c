@@ -1,7 +1,7 @@
 #include <src/libvirt_domains.c>
 #include <stdio.h>
 
-void vcpus_count(struct DomainsList list)
+int vCPUsCount(struct DomainsList list)
 {
 	for (int i = 0; i < list.count; i++) {
 	        int vcpus;
@@ -13,6 +13,36 @@ void vcpus_count(struct DomainsList list)
 	}
 }
 
+int vCPUCount(virDomainPtr domain)
+{
+	return virDomainGetVcpusFlags(domain, VIR_DOMAIN_VCPU_MAXIMUM);
+}
+
+int pCPUUsage(virConnectPtr conn)
+{
+	int nr_params = 0;
+	int nr_cpus = VIR_NODE_CPU_STATS_ALL_CPUS;
+	virNodeCPUStatsPtr params;
+	check(virNodeGetCPUStats(conn, nr_cpus, NULL, &nr_params, 0) == 0 &&
+	      nr_params != 0, "Could not get pCPU stats 1");
+	params = malloc(sizeof(virNodeCPUStats) * nr_params);
+	check(params != NULL, "Could not allocate pCPU params");
+	memset(params, 0, sizeof(virNodeCPUStats) * nr_params);
+	check(virNodeGetCPUStats(conn, nr_cpus, params, &nr_params, 0) == 0,
+	      "Could not get pCPU stats 2");
+	for(int i = 0; i < nr_params; i++) {
+		printf("%s - %20llu\n", params[i].field, params[i].value);
+
+	}
+error:
+	exit(1);
+}
+
+unsigned long long toSeconds(unsigned long long nanoseconds)
+{
+	return nanoseconds / 1000000000;
+}
+
 int main (int argc, char **argv)
 {
 	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"
@@ -22,9 +52,10 @@ int main (int argc, char **argv)
 	printf("Connecting to Libvirt... \n");
 	virConnectPtr conn = local_connect();
 	printf("Connected! \n");
-	list = active_domains(conn);
-	check(list.count > 0, "No active domains available");
-	vcpus_count(list);
+	pCPUUsage(conn);
+//	list = active_domains(conn);
+//	check(list.count > 0, "No active domains available");
+//	vcpus_count(list);
 	virConnectClose(conn);
 	return 0;
 error:

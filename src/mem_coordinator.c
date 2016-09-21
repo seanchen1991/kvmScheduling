@@ -198,8 +198,7 @@ int main (int argc, char **argv)
 				virDomainSetMemory(starved.domain,
 						   starved.memory + WASTE_THRESHOLD);
 			}
-		} else if (starved.memory/1024 >= STARVATION_THRESHOLD &&
-			   wasteful.memory/1024 >= WASTE_THRESHOLD) {
+		} else if (wasteful.memory/1024 >= WASTE_THRESHOLD) {
 			// No domain really need more memory at this point, give
 			// it back to the hypervisor
 			printf("Returning memory back to host\n");

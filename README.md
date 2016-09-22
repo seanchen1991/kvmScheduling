@@ -51,6 +51,7 @@ is balanced, while making as few 'pin changes' as possible as these are costly.
 * Find:
   - vCPU usage (%) for all domains
   - pCPU usage (%)
+  - To calculate usage: sum(usertime, kerneltime)/sum(usertime, kerneltime, iowait, idle)
 * Check the current mapping to see which pCPUs are mapped to which vCPUs.
 * Find 'the best pCPU' to pin each vCPU:
   - vCPU usage has to be balanced across all 4 pCPUs - sum and divide this usage?

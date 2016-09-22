@@ -23,6 +23,8 @@ int pCPUUsage(virConnectPtr conn)
 	int nr_params = 0;
 	int nr_cpus = VIR_NODE_CPU_STATS_ALL_CPUS;
 	virNodeCPUStatsPtr params;
+	double usage, busy_time, total_time = 0;
+
 	check(virNodeGetCPUStats(conn, nr_cpus, NULL, &nr_params, 0) == 0 &&
 	      nr_params != 0, "Could not get pCPU stats 1");
 	params = malloc(sizeof(virNodeCPUStats) * nr_params);
@@ -30,10 +32,16 @@ int pCPUUsage(virConnectPtr conn)
 	memset(params, 0, sizeof(virNodeCPUStats) * nr_params);
 	check(virNodeGetCPUStats(conn, nr_cpus, params, &nr_params, 0) == 0,
 	      "Could not get pCPU stats 2");
-	for(int i = 0; i < nr_params; i++) {
-		printf("%s - %20llu\n", params[i].field, params[i].value);
 
+	for (int i = 0; i < nr_params; i++) {
+		if (strcmp(params[i].field, VIR_NODE_CPU_STATS_USER) == 0 ||
+		    strcmp(params[i].field, VIR_NODE_CPU_STATS_KERNEL) == 0) {
+		        busy_time += params[i].value;
+		}
+		total_time += params[i].value;
 	}
+        usage = busy_time/total_time * 100;
+	printf("CPU usage: %f%\n", usage);
 error:
 	exit(1);
 }

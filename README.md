@@ -51,7 +51,12 @@ is balanced, while making as few 'pin changes' as possible as these are costly.
 * Find:
   - vCPU usage (%) for all domains
   - pCPU usage (%)
-  - To calculate usage: sum(usertime, kerneltime)/sum(usertime, kerneltime, iowait, idle)
+  - Since libvirt won't give you the %, we have to calculate it by taking samples
+    of the cputime. Say we have a scheduling period of 10ns:
+      - When the program starts, take sample of pCPUtime, let's say it's 500ns
+      - After 10ns, we take another sample - it's 505ns.
+      - We can use the samples and the period to infer the usage, (505-500)/10 = 0.5 -> 50% usage
+      - Take into account the number of cpus, usage can go up to 400% with 4 cpus.
 * Check the current mapping to see which pCPUs are mapped to which vCPUs.
 * Find 'the best pCPU' to pin each vCPU:
   - vCPU usage has to be balanced across all 4 pCPUs - sum and divide this usage?

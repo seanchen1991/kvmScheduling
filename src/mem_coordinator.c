@@ -15,10 +15,10 @@ struct DomainMemory {
 	long memory;
 };
 
-char * tagToMeaning(int tag) {
-	char * meaning;
-	switch(tag)
-	{
+char *tagToMeaning(int tag)
+{
+	char *meaning;
+	switch (tag) {
 	case VIR_DOMAIN_MEMORY_STAT_SWAP_IN:
 		meaning = "SWAP IN";
 		break;
@@ -67,7 +67,7 @@ void printDomainStats(struct DomainsList list)
 						memstats,
 						VIR_DOMAIN_MEMORY_STAT_NR,
 						0);
-		for(int j = 0; j < nr_stats; j++) {
+		for (int j = 0; j < nr_stats; j++) {
 			printf("%s : %s = %llu MB\n",
 			       virDomainGetName(list.domains[i]),
 			       tagToMeaning(memstats[j].tag),
@@ -93,7 +93,7 @@ void printHostMemoryStats(virConnectPtr conn)
 				      &nparams,
 				      0);
 	}
-	printf("Hypervisor memory: \n");
+	printf("Hypervisor memory:\n");
 	for (int i = 0; i < nparams; i++) {
 		printf("%8s : %lld MB\n",
 		       stats[i].field,
@@ -104,8 +104,9 @@ void printHostMemoryStats(virConnectPtr conn)
 // Returns an array like:
 //  0: Contains the DomainMemory struct that wastes the most memory
 //  1: Contains the DomainMemory struct that needs memory the most urgently
-struct DomainMemory * findRelevantDomains(struct DomainsList list) {
-	struct DomainMemory * ret;
+struct DomainMemory *findRelevantDomains(struct DomainsList list)
+{
+	struct DomainMemory *ret;
 	struct DomainMemory wasteful;
 	struct DomainMemory starved;
 	ret = malloc(sizeof(struct DomainMemory) * 2);
@@ -126,7 +127,7 @@ struct DomainMemory * findRelevantDomains(struct DomainsList list) {
 		check(nr_stats != -1,
 		      "ERROR: Could not collect memory stats for domain %s",
 		      virDomainGetName(list.domains[i]));
-		printf("%s : %llu MB available \n",
+		printf("%s : %llu MB available\n",
 		       virDomainGetName(list.domains[i]),
 		       (memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val)/1024);
 		if (memstats[VIR_DOMAIN_MEMORY_STAT_AVAILABLE].val > wasteful.memory) {
@@ -153,26 +154,25 @@ error:
 	exit(1);
 }
 
-int main (int argc, char **argv)
+int main(int argc, char **argv)
 {
 	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"
 	      " the scheduler will trigger.");
 	struct DomainsList list;
 	printf("- vCPU scheduler - interval: %s\n", argv[1]);
-	printf("Connecting to Libvirt... \n");
+	printf("Connecting to Libvirt...\n");
 	virConnectPtr conn = local_connect();
-	printf("Connected! \n");
+	printf("Connected!\n");
 	// Loop until program halts or no active domains available
 	// Naive implementation, as setting memory in this scenario may
 	// not be optimal due to race conditions.
-	while((list = active_domains(conn)).count > 0)
-	{
-		struct DomainMemory * relevantDomains;
+	while ((list = active_domains(conn)).count > 0) {
+		struct DomainMemory *relevantDomains;
 		relevantDomains = findRelevantDomains(list);
 		struct DomainMemory wasteful = relevantDomains[0];
 		struct DomainMemory starved = relevantDomains[1];
 		free(relevantDomains);
-                // Uncomment this to see all guests stats (helpful when debugging)
+		// Uncomment this to see all guests stats (helpful when debugging)
 		// printDomainStats(list);
 		// Uncomment this to see host stats
 		// printHostMemoryStats(conn);
@@ -209,7 +209,7 @@ int main (int argc, char **argv)
 		sleep(atoi(argv[1]));
 		clearScreen();
 	}
-	printf("No active domains - closing. See you next time! \n");
+	printf("No active domains - closing. See you next time!\n");
 	virConnectClose(conn);
 	free(conn);
 	return 0;

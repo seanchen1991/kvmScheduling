@@ -4,6 +4,13 @@
 
 static const long NANOSECOND = 1000000000;
 
+struct DomainStats {
+	virDomainPtr dom;
+	int vcpus_count;
+	// Contains the vCPU time samples in the same order
+	unsigned long long *previous_vcpus, *current_vcpus;
+};
+
 int vCPUsCount(struct DomainsList list)
 {
 	int ret = 0;
@@ -48,9 +55,6 @@ error:
 
 void printDomainParams(virDomainStatsRecordPtr record)
 {
-	// One could sample vCPUs here - with vcpu.0.time etc...
-	// We know that values are always unsigned long because
-	// we just queried for VCPU info
 	for (int i = 0; i < record->nparams; i++) {
 		printf("%s %s - %llu\n",
 		       virDomainGetName(record->dom),
@@ -150,9 +154,42 @@ double usage(unsigned long long difference, unsigned long long period)
 	return 100 * ((double) difference / (double) period);
 }
 
-unsigned long long *vCpuSamples(virDomainStatsRecordPtr record)
+struct DomainStats createDomainStats(virDomainStatsRecordPtr record)
 {
+	// One could sample vCPUs here - with vcpu.0.time etc...
+	// We know that values are always unsigned long because
+	// we just queried for VCPU info
+        struct DomainStats ret;
+	int vcpus_count = 0;
+	int vcpu_number;
+	unsigned long long *previous_vcpus;
+	unsigned long long int *current_vcpus;
+	for (int i = 0; i < record->nparams; i++) {
+		if(strcmp(record->params[i].field, "vcpu.current") == 0) {
+			vcpus_count = record->params[i].value.i;
+			current_vcpus = (unsigned long long int *)
+				calloc(vcpus_count, sizeof(unsigned long long int));
+			check(current_vcpus != NULL,
+			      "Could not allocate memory for stats struct");
+		}
 
+		int field_len = strlen(record->params[i].field);
+		if (field_len >= 4) {
+			const char *last_four = &record->params[i].field[field_len-4];
+			if (strcmp(last_four, "time") == 0) {
+				vcpu_number = atoi(&record->params[i].field[field_len-6]); // vCPU number
+				current_vcpus[vcpu_number] = record->params[i].value.ul;
+				printf("%llu\n", current_vcpus[vcpu_number]);
+			}
+		}
+		printf("%s %s - %llu\n",
+		       virDomainGetName(record->dom),
+		       record->params[i].field,
+		       record->params[i].value.ul);
+	}
+	return ret;
+error:
+	exit(1);
 }
 
 int main(int argc, char **argv)
@@ -160,17 +197,10 @@ int main(int argc, char **argv)
 	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"
 	      " the scheduler will trigger.");
 	struct DomainsList list;
+	struct DomainsStats *domain_stats;
 	unsigned long long previous_pcpu, current_pcpu;
-	// The data structure will be a DomainStats which contains
-	// struct DomainStats {
-	//    virDomainPtr dom;
-	//    int vcpus_count;
-	//    // Contains the vCPU time samples in the same order
-        //    unsigned long long *previous_vcpus, *current_vcpus;
-	// }
-	//
 	// The main method has a struct DomainStats *domains_stats;
-	// This method is allocated and freed on every scheduler period.
+	// This pointer is allocated and freed on every scheduler period.
 	virConnectPtr conn;
 	virNodeInfo info;
 	virDomainStatsRecordPtr *records = NULL;
@@ -191,6 +221,7 @@ int main(int argc, char **argv)
 		virDomainStatsRecordPtr *next;
 		for (next = records; *next; next++) {
 			// sampling code for vCPUs goes here
+			createDomainStats(*next);
 		}
 		virDomainStatsRecordListFree(records);
 		sleep(atoi(argv[1]));

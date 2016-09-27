@@ -2,68 +2,29 @@
 
 VCPU scheduler &amp; memory coordinator for KVM through Libvirt
 
-This is just a experiment to play with the libvirt APIs.
+This is just a experiment to play with the libvirt APIs and
+have a benchmarking tool for scheduling problems.
 
 It consists of two projects:
 
   * A vCPU scheduler which tries to assign the best pCPU to each
-  vCPU, based on fairness
+  vCPU, based on fairness. It triggers only after a fixed usage
+  percentage on one of the CPUs (defined in the source).
+
   * A memory scheduler based on fairness which keeps the unused memory
   on all active domain within certain boundaries (e.g between 100/300MB)
 
-## Memory scheduler
+## Compile
 
-* Compile by running `make`. It will link using -lvirt.
-* The scheduler runs on a period determined by the argument passed (in seconds)
-* `./mem_coordinator 3` would run the scheduler every 3 seconds
-* You need to have active libvirt domains in order to run the scheduler,
-  otherwise the scheduler will simply close on the first cycle without
-  active domains.
-* Run
+Run `make` from the project's root to generate both programs.
+You can also run `make` in each of the subfolders to only generate
+one or the other program.
 
-The algorithm used to calculate fairness is the following:
+Find the binaries on `bin/memory_coordinator` and `bin/vcpu_scheduler`.
 
-* Define a thresholds for starvation and waste of available memory. By default,
-  a domain is starved when it has less than 150MB of memory available,
-  and it's wasting memory when it has more than 300MB of memory available.
+To compile this, make sure you have the packages `libvirt-dev` and `qemu-kvm`.
 
-* On every scheduler period, find the most starved and the most wasteful domains.
+## Usage
 
-* If the most starved domain is below the starvation threshold, we have to assign memory to it:
-  * If there is a memory wasting memory above the waste threshold, halve
-  that domain's memory and assign the same amount to the starved domain.
-  * If there is no domain wasting memory (most common case after a few cycles),
-  assign more memory to it (it assigns the current memory + the waste threshold).
-  The algorithm needs to be generous in this step, as memory intensive processes
-  will immediately consume the memory that's assigned in this step.
-* Alternatively, if there is no starved but there is a wasteful domain,
-  return that memory back to the host by getting
-  'wasteful.memory - WASTE_THRESHOLD'
-* The last case, if there is no starved domain nor wasteful domains don't do anything.
-
-## vCPU scheduler
-
-In general, vCPUs in libvirt are mapped to all physical CPUs in the hypervisor
-by default. Our scheduler decides to pin vCPUs to pCPUs so that pCPU usage
-is balanced, while making as few 'pin changes' as possible as these are costly.
-
-* On every scheduler period:
-* Find:
-  - vCPU usage (%) for all domains
-  - pCPU usage (%)
-  - Since libvirt won't give you the %, we have to calculate it by taking samples
-    of the cputime. Say we have a scheduling period of 10ns:
-      - When the program starts, take sample of pCPUtime, let's say it's 500ns
-      - After 10ns, we take another sample - it's 505ns.
-      - We can use the samples and the period to infer the usage, (505-500)/10 = 0.5 -> 50% usage
-      - Take into account the number of cpus, usage can go up to 400% with 4 cpus.
-* Check the current mapping to see which pCPUs are mapped to which vCPUs.
-* Find 'the best pCPU' to pin each vCPU:
-  - vCPU usage has to be balanced across all 4 pCPUs - sum and divide this usage?
-  - in order to minimize pin changes use this metric:
-     - summation of all vCPU usage
-     - summation of all pCPU usage
-     - division of vcputotal/pcpus.count = average vCPU load per pCPU
-     - keep the same metric within scheduler periods.
-     - if the change isn't dramatic enough, do not reassign vCPUs to pCPUs
-     - define dramatic via threshold (can be tweaked)
+### [Memory Coordinator](memory_coordinator/README.md)
+### [vCPU Scheduler](vcpu_scheduler/README.md)

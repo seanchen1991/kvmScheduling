@@ -4,6 +4,10 @@ In general, vCPUs in libvirt are mapped to all physical CPUs in the hypervisor
 by default. Our scheduler decides to pin vCPUs to pCPUs so that pCPU usage
 is balanced, while making as few 'pin changes' as possible as these are costly.
 
+## Demo
+
+![](vcpu.gif)
+
 ## Compile
 
 Run `make` in the root of this project, it will compile `vcpu_scheduler.c`

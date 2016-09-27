@@ -4,6 +4,10 @@ This program aims to balance the unused memory in every domain, to
 ensure fairness among VMs, and to waste as little hypervisor memory as
 possible.
 
+## Demo
+
+![](mem.gif)
+
 ## Compile
 
 Run `make` in the root of this project, it will compile `mem_coordinator.c`

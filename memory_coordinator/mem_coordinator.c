@@ -176,14 +176,16 @@ int main(int argc, char **argv)
 		// printDomainStats(list);
 		// Uncomment this to see host stats
 		// printHostMemoryStats(conn);
-		if (starved.memory/1024 <= STARVATION_THRESHOLD) {
+		if (starved.memory <= STARVATION_THRESHOLD) {
 		// At this point, we must assign more memory to the domain
-			if (wasteful.memory/1024 >= WASTE_THRESHOLD) {
+			if (wasteful.memory >= WASTE_THRESHOLD) {
 				// The most wasteful domain will get less memory, precisely
 				// 'waste/2', and the most starved domain will get
 				// removed the same quantity.
+			        printf("Removing memory from wasteful domain \n");
 				virDomainSetMemory(wasteful.domain,
 						   wasteful.memory - wasteful.memory/2);
+			        printf("Adding memory to starved domain \n");
 				virDomainSetMemory(starved.domain,
 						   starved.memory + wasteful.memory/2);
 			} else {
@@ -195,10 +197,14 @@ int main(int argc, char **argv)
 				// You need to be generous assigning memory,
 				// otherwise it's consumed immediately (in
 				// between coordinator periods)
+			        printf("Adding memory to starved domain %s \n",
+				       virDomainGetName(starved.domain));
+			        printf("starved domain memory is %lu\n",
+				       starved.memory/1024);
 				virDomainSetMemory(starved.domain,
 						   starved.memory + WASTE_THRESHOLD);
 			}
-		} else if (wasteful.memory/1024 >= WASTE_THRESHOLD) {
+		} else if (wasteful.memory >= WASTE_THRESHOLD) {
 			// No domain really need more memory at this point, give
 			// it back to the hypervisor
 			printf("Returning memory back to host\n");

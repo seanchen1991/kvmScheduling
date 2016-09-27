@@ -1,14 +1,14 @@
-#include <src/libvirt_domains.c>
+#include <shared/libvirt_domains.c>
 #include <stdio.h>
 #include <unistd.h>
 
 // Define an available memory threshold below which a domain can be considered
 // memory starved (in MB)
-const int STARVATION_THRESHOLD = 150 * 1024;
+static const int STARVATION_THRESHOLD = 150 * 1024;
 
 // Define an available memory threshold above which a domain can be
 // considered to be wasting memory (in MB)
-const int WASTE_THRESHOLD = 300 * 1024;
+static const int WASTE_THRESHOLD = 300 * 1024;
 
 struct DomainMemory {
 	virDomainPtr domain;

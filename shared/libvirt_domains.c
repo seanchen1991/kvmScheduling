@@ -1,6 +1,6 @@
 #include <stdlib.h>
-#include <src/dbg.h>
-#include <src/libvirt_domains.h>
+#include <shared/dbg.h>
+#include <shared/libvirt_domains.h>
 
 virConnectPtr local_connect(void)
 {

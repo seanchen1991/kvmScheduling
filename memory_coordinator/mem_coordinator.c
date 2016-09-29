@@ -18,6 +18,7 @@ struct DomainMemory {
 char *tagToMeaning(int tag)
 {
 	char *meaning;
+
 	switch (tag) {
 	case VIR_DOMAIN_MEMORY_STAT_SWAP_IN:
 		meaning = "SWAP IN";
@@ -62,6 +63,7 @@ void printDomainStats(struct DomainsList list)
 		virDomainMemoryStatStruct memstats[VIR_DOMAIN_MEMORY_STAT_NR];
 		unsigned int nr_stats;
 		unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT;
+
 		virDomainSetMemoryStatsPeriod(list.domains[i], 1, flags);
 		nr_stats = virDomainMemoryStats(list.domains[i],
 						memstats,
@@ -80,6 +82,7 @@ void printHostMemoryStats(virConnectPtr conn)
 {
 	int nparams = 0;
 	virNodeMemoryStatsPtr stats = malloc(sizeof(virNodeMemoryStats));
+
 	if (virNodeGetMemoryStats(conn,
 				  VIR_NODE_MEMORY_STATS_ALL_CELLS,
 				  NULL,
@@ -109,6 +112,7 @@ struct DomainMemory *findRelevantDomains(struct DomainsList list)
 	struct DomainMemory *ret;
 	struct DomainMemory wasteful;
 	struct DomainMemory starved;
+
 	ret = malloc(sizeof(struct DomainMemory) * 2);
 	wasteful.memory = 0;
 	starved.memory = 0;
@@ -117,6 +121,7 @@ struct DomainMemory *findRelevantDomains(struct DomainsList list)
 		unsigned int nr_stats;
 		unsigned int flags = VIR_DOMAIN_AFFECT_CURRENT;
 		unsigned int period_enabled;
+
 		period_enabled = virDomainSetMemoryStatsPeriod(list.domains[i],
 							       1,
 							       flags);
@@ -159,18 +164,22 @@ int main(int argc, char **argv)
 	check(argc == 2, "ERROR: You need one argument, the time interval in seconds"
 	      " the scheduler will trigger.");
 	struct DomainsList list;
+	virConnectPtr conn = local_connect();
+
 	printf("- vCPU scheduler - interval: %s\n", argv[1]);
 	printf("Connecting to Libvirt...\n");
-	virConnectPtr conn = local_connect();
 	printf("Connected!\n");
 	// Loop until program halts or no active domains available
 	// Naive implementation, as setting memory in this scenario may
 	// not be optimal due to race conditions.
 	while ((list = active_domains(conn)).count > 0) {
 		struct DomainMemory *relevantDomains;
+		struct DomainMemory wasteful;
+		struct DomainMemory starved;
+
 		relevantDomains = findRelevantDomains(list);
-		struct DomainMemory wasteful = relevantDomains[0];
-		struct DomainMemory starved = relevantDomains[1];
+		wasteful = relevantDomains[0];
+		starved = relevantDomains[1];
 		free(relevantDomains);
 		// Uncomment this to see all guests stats (helpful when debugging)
 		// printDomainStats(list);
@@ -182,10 +191,10 @@ int main(int argc, char **argv)
 				// The most wasteful domain will get less memory, precisely
 				// 'waste/2', and the most starved domain will get
 				// removed the same quantity.
-			        printf("Removing memory from wasteful domain \n");
+				printf("Removing memory from wasteful domain\n");
 				virDomainSetMemory(wasteful.domain,
 						   wasteful.memory - wasteful.memory/2);
-			        printf("Adding memory to starved domain \n");
+				printf("Adding memory to starved domain\n");
 				virDomainSetMemory(starved.domain,
 						   starved.memory + wasteful.memory/2);
 			} else {
@@ -197,9 +206,9 @@ int main(int argc, char **argv)
 				// You need to be generous assigning memory,
 				// otherwise it's consumed immediately (in
 				// between coordinator periods)
-			        printf("Adding memory to starved domain %s \n",
+				printf("Adding memory to starved domain %s\n",
 				       virDomainGetName(starved.domain));
-			        printf("starved domain memory is %lu\n",
+				printf("starved domain memory is %lu\n",
 				       starved.memory/1024);
 				virDomainSetMemory(starved.domain,
 						   starved.memory + WASTE_THRESHOLD);

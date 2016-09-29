@@ -40,7 +40,7 @@ unsigned long long pCpuSample(virConnectPtr conn)
 		    strcmp(params[i].field, VIR_NODE_CPU_STATS_KERNEL) == 0) {
 			busy_time += params[i].value;
 		}
-	        //printf("pCPUs %s: %llu ns\n", params[i].field, params[i].value);
+		//printf("pCPUs %s: %llu ns\n", params[i].field, params[i].value);
 	}
 	free(params);
 	//printf("pCPUs busy time: %llu ns\n", busy_time);
@@ -62,8 +62,9 @@ void printDomainParams(virDomainStatsRecordPtr record)
 virDomainStatsRecordPtr *domainvCPUStats(struct DomainsList list)
 {
 	unsigned int stats = 0;
-	stats = VIR_DOMAIN_STATS_VCPU;
 	virDomainStatsRecordPtr *records = NULL;
+
+	stats = VIR_DOMAIN_STATS_VCPU;
 	check(virDomainListGetStats(list.domains, stats,
 				    &records, 0) > 0,
 	      "Could not get domains stats");
@@ -87,10 +88,12 @@ struct DomainStats createDomainStats(virDomainStatsRecordPtr record)
 	// One could sample vCPUs here - with vcpu.0.time etc...
 	// We know that values are always unsigned long because
 	// we just queried for VCPU info
-        struct DomainStats ret;
+	struct DomainStats ret;
 	int vcpus_count = 0;
-	int vcpu_number;
+	int vcpu_number, field_len;
 	unsigned long long int *current_vcpus;
+	const char *last_four;
+
 	for (int i = 0; i < record->nparams; i++) {
 		if (strcmp(record->params[i].field, "vcpu.current") == 0) {
 			vcpus_count = record->params[i].value.i;
@@ -99,10 +102,9 @@ struct DomainStats createDomainStats(virDomainStatsRecordPtr record)
 			check(current_vcpus != NULL,
 			      "Could not allocate memory for stats struct");
 		}
-
-		int field_len = strlen(record->params[i].field);
+		field_len = strlen(record->params[i].field);
 		if (field_len >= 4) {
-			const char *last_four = &record->params[i].field[field_len-4];
+			last_four = &record->params[i].field[field_len-4];
 			if (strcmp(last_four, "time") == 0) {
 				vcpu_number = atoi(&record->params[i].field[field_len-6]); // vCPU number
 				current_vcpus[vcpu_number] = record->params[i].value.ul;
@@ -124,12 +126,14 @@ void calculateDomainUsage(struct DomainStats *previous_domain_stats,
 			  int domains_count,
 			  long period)
 {
+	double avg_usage;
+
 	// i represents number of domains
 	for (int i = 0; i < domains_count; i++) {
 		current_domain_stats[i].usage =
 			calloc(current_domain_stats[i].vcpus_count,
 			       sizeof(double));
-		double avg_usage = 0.0;
+		avg_usage = 0.0;
 		printf("Domain: %s:\n",
 		       virDomainGetName(current_domain_stats[i].domain));
 		// j represents vcpu number
@@ -163,12 +167,12 @@ void setCpuUsage(struct DomainStats *domain_stats,
 	virVcpuInfoPtr cpuinfo;
 	unsigned char *cpumaps;
 	size_t cpumaplen;
+	int vcpus_per_cpu[maxcpus];
 
 	// Stores the usage of a CPU by adding the usage of
 	// the vCPUs it uses in all domains and divides it by the
 	// vcpus it uses.
 	// double cpu_usage[maxcpus];
-	int vcpus_per_cpu[maxcpus];
 	memset(vcpus_per_cpu, 0, sizeof(int) * maxcpus);
 
 	for (int i = 0; i < nr_domains; i++) {
@@ -201,10 +205,10 @@ void setCpuUsage(struct DomainStats *domain_stats,
 		free(cpumaps);
 	}
 	printf("--------------------------------\n");
-	for (int i = 0; i < maxcpus; i++){
+	for (int i = 0; i < maxcpus; i++) {
 		if (vcpus_per_cpu[i] != 0) {
 			cpu_usage[i] = cpu_usage[i]/((double)vcpus_per_cpu[i]);
-			printf("CPU %d - # vCPUs assigned %d - usage %f%% \n",
+			printf("CPU %d - # vCPUs assigned %d - usage %f%%\n",
 			       i,
 			       vcpus_per_cpu[i],
 			       cpu_usage[i]);
@@ -225,14 +229,15 @@ void setInitialVcpuPinning(struct DomainStats *domain_stats,
 	size_t cpumaplen = VIR_CPU_MAPLEN(nr_cpus);
 	unsigned char nr_cpus_mask = 0x1;
 	unsigned char temp = 0x1;
-	for(int i = 0; i < nr_cpus; i++) {
+
+	for (int i = 0; i < nr_cpus; i++) {
 		temp <<= 0x1;
 		nr_cpus_mask ^= temp;
 	}
 
-	for(int i = 0; i < domains_count; i++){
+	for (int i = 0; i < domains_count; i++) {
 		map = 0x1;
-		for(int j = 0; j < domain_stats[i].vcpus_count; j++) {
+		for (int j = 0; j < domain_stats[i].vcpus_count; j++) {
 			printf("  - CPUmap: 0x%x\n", map);
 			virDomainPinVcpu(domain_stats[i].domain,
 					 j,
@@ -270,7 +275,7 @@ void pinPcpus(double *usage, int nr_cpus,
 		printf("Busiest CPU: %d - Freest CPU: %d\n", busiest, freest);
 		return;
 	}
-        printf("Busiest CPU: %d - Freest CPU: %d\n", busiest, freest);
+	printf("Busiest CPU: %d - Freest CPU: %d\n", busiest, freest);
 	printf("Busiest CPU above usage threshold of %f%%\n", USAGE_THRESHOLD);
 	printf("Changing pinnings...\n");
 	virVcpuInfoPtr cpuinfo;
@@ -281,7 +286,7 @@ void pinPcpus(double *usage, int nr_cpus,
 
 	// To do so iterate over all domains, over all vcpus and change
 	// the busiest CPU vcpus for the freest ones and viceversa
-	for(int i = 0; i < domains_count; i++){
+	for (int i = 0; i < domains_count; i++) {
 		cpuinfo = calloc(domain_stats[i].vcpus_count,
 				 sizeof(virVcpuInfo));
 		cpumaplen = VIR_CPU_MAPLEN(nr_cpus);
@@ -293,7 +298,7 @@ void pinPcpus(double *usage, int nr_cpus,
 					cpumaps, cpumaplen) > 0,
 		      "Could not retrieve vCpus affinity info");
 		for (int j = 0; j < domain_stats[i].vcpus_count; j++) {
-			if(cpuinfo[j].cpu == busiest) {
+			if (cpuinfo[j].cpu == busiest) {
 				printf("%s vCPU %d is one of the busiest\n",
 				       virDomainGetName(domain_stats[i].domain),
 				       j);
@@ -301,7 +306,7 @@ void pinPcpus(double *usage, int nr_cpus,
 						 j,
 						 &freest_map,
 						 cpumaplen);
-			} else if(cpuinfo[j].cpu == freest) {
+			} else if (cpuinfo[j].cpu == freest) {
 				printf("%s vCPU %d is one of the freest\n",
 				       virDomainGetName(domain_stats[i].domain),
 				       j);
@@ -335,11 +340,12 @@ int main(int argc, char **argv)
 	virConnectPtr conn;
 	virNodeInfo info;
 	virDomainStatsRecordPtr *domains = NULL;
+
 	printf("- vCPU scheduler - interval: %s\n", argv[1]);
-	printf("Connecting to Libvirt... \n");
+	printf("Connecting to Libvirt...\n");
 	conn = local_connect();
 	virNodeGetInfo(conn, &info);
-	printf("Connected! \n");
+	printf("Connected!\n");
 	previous_pcpu = pCpuSample(conn);
 	maxcpus = virNodeGetCPUMap(conn, NULL, NULL, 0);
 	while ((list = active_domains(conn)).count > 0) {
@@ -369,7 +375,7 @@ int main(int argc, char **argv)
 				calloc(list.count, sizeof(struct DomainStats));
 			memcpy(previous_domain_stats, current_domain_stats,
 			       list.count * sizeof(struct DomainStats));
-	                setInitialVcpuPinning(current_domain_stats,
+			setInitialVcpuPinning(current_domain_stats,
 					      list.count,
 					      maxcpus);
 		} else {
@@ -394,7 +400,7 @@ int main(int argc, char **argv)
 		sleep(atoi(argv[1]));
 		clearScreen();
 	}
-	printf("No active domains - closing. See you next time! \n");
+	printf("No active domains - closing. See you next time!\n");
 	virConnectClose(conn);
 	free(conn);
 	return 0;
